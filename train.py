@@ -51,7 +51,7 @@ def train(hyp, opt, device, tb_writer=None, wandb=None):
     wdir.mkdir(parents=True, exist_ok=True)  # make dir
     last = wdir / 'last.pt'
     best = wdir / 'best.pt'
-    results_file = save_dir / 'results.txt'
+    results_file = save_dir / 'results.csv'
 
     # Save run settings
     with open(save_dir / 'hyp.yaml', 'w') as f:
@@ -230,6 +230,22 @@ def train(hyp, opt, device, tb_writer=None, wandb=None):
     
     torch.save(model, wdir / 'init.pt')
     
+    tags = [
+        'train/box_loss', 'train/obj_loss', 'train/cls_loss', 'train/total_loss',  # train loss
+        'metrics/precision', 'metrics/recall', 'metrics/mAP_0.5', 'metrics/mAP_0.5:0.95',
+        'val/box_loss', 'val/obj_loss', 'val/cls_loss',  # val loss
+        'x/lr0', 'x/lr1', 'x/lr2'   # params
+    ]
+    if not results_file.exists():
+        head_results = ['Epoch', 'gpu_mem'] + tags[:4] + ['targets', 'img_size'] + tags[4:]
+        n = len(head_results)
+        with open(results_file, 'w') as file:
+            file.write(
+                (
+                    ('%10s,'*2 + '%24s,'*(n-2)) % tuple(head_results)
+                ).rstrip(',') + '\n'
+            )
+
     for epoch in range(start_epoch, epochs):  # epoch ------------------------------------------------------------------
         model.train()
 
@@ -304,8 +320,8 @@ def train(hyp, opt, device, tb_writer=None, wandb=None):
             if rank in [-1, 0]:
                 mloss = (mloss * i + loss_items) / (i + 1)  # update mean losses
                 mem = '%.3gG' % (torch.cuda.memory_reserved() / 1E9 if torch.cuda.is_available() else 0)  # (GB)
-                s = ('%10s' * 2 + '%10.4g' * 6) % (
-                    '%g/%g' % (epoch, epochs - 1), mem, *mloss, targets.shape[0], imgs.shape[-1])
+                log_train = ('%g/%g' % (epoch, epochs - 1), mem, *mloss, targets.shape[0], imgs.shape[-1])
+                s = ('%10s' * 2 + '%10.4g' * 6) % log_train
                 pbar.set_description(s)
 
                 # Plot
@@ -332,29 +348,31 @@ def train(hyp, opt, device, tb_writer=None, wandb=None):
                 ema.update_attr(model)
             final_epoch = epoch + 1 == epochs
             if not opt.notest or final_epoch:  # Calculate mAP
-                if epoch >= 3:
-                    results, maps, times = test.test(opt.data,
-                                                 batch_size=batch_size*2,
-                                                 imgsz=imgsz_test,
-                                                 model=ema.ema.module if hasattr(ema.ema, 'module') else ema.ema,
-                                                 single_cls=opt.single_cls,
-                                                 dataloader=testloader,
-                                                 save_dir=save_dir,
-                                                 plots=plots and final_epoch,
-                                                 log_imgs=opt.log_imgs if wandb else 0)
+                results, maps, _ = test.test(
+                    opt.data,
+                    batch_size=batch_size*2,
+                    imgsz=imgsz_test,
+                    model=ema.ema.module if hasattr(ema.ema, 'module') else ema.ema,
+                    single_cls=opt.single_cls,
+                    dataloader=testloader,
+                    save_dir=save_dir,
+                    plots=plots and final_epoch,
+                    log_imgs=opt.log_imgs if wandb else 0
+                )
 
-            # Write
+            # Write results
+            log_vals = list(log_train) + list(results) + lr
+            szlv = len(log_vals)
             with open(results_file, 'a') as f:
-                f.write(s + '%10.4g' * 7 % results + '\n')  # P, R, mAP@.5, mAP@.5-.95, val_loss(box, obj, cls)
+                f.write((
+                    ('%10s,'*2 + '%24g,'*(szlv-2)) % tuple(log_vals)
+                ).rstrip(',') + '\n'
+                )  # P, R, mAP@.5, mAP@.5-.95, val_loss(box, obj, cls)
             if len(opt.name) and opt.bucket:
                 os.system('gsutil cp %s gs://%s/results/results%s.txt' % (results_file, opt.bucket, opt.name))
 
             # Log
-            tags = ['train/box_loss', 'train/obj_loss', 'train/cls_loss',  # train loss
-                    'metrics/precision', 'metrics/recall', 'metrics/mAP_0.5', 'metrics/mAP_0.5:0.95',
-                    'val/box_loss', 'val/obj_loss', 'val/cls_loss',  # val loss
-                    'x/lr0', 'x/lr1', 'x/lr2']  # params
-            for x, tag in zip(list(mloss[:-1]) + list(results) + lr, tags):
+            for x, tag in zip(log_vals[2:6]+log_vals[8:], tags):
                 if tb_writer:
                     tb_writer.add_scalar(tag, x, epoch)  # tensorboard
                 if wandb:
