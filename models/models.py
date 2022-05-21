@@ -49,7 +49,7 @@ def create_modules(module_defs, img_size, cfg):
             elif mdef['activation'] == 'swish':
                 modules.add_module('activation', Swish())
             elif mdef['activation'] == 'mish':
-                modules.add_module('activation', Mish())
+                modules.add_module('activation', nn.Mish())
             elif mdef['activation'] == 'emb':
                 modules.add_module('activation', F.normalize())
             elif mdef['activation'] == 'logistic':
@@ -87,7 +87,7 @@ def create_modules(module_defs, img_size, cfg):
             elif mdef['activation'] == 'swish':
                 modules.add_module('activation', Swish())
             elif mdef['activation'] == 'mish':
-                modules.add_module('activation', Mish())
+                modules.add_module('activation', nn.Mish())
             elif mdef['activation'] == 'silu':
                 modules.add_module('activation', nn.SiLU())
                 

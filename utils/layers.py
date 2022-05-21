@@ -5,14 +5,6 @@ from utils.general import *
 import torch
 from torch import nn
 
-try:
-    from mish_cuda import MishCuda as Mish
-    
-except:
-    class Mish(nn.Module):  # https://github.com/digantamisra98/Mish
-        def forward(self, x):
-            return x * F.softplus(x).tanh()
-
 
 class Reorg(nn.Module):
     def forward(self, x):
