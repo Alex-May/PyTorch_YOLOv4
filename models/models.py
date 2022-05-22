@@ -282,7 +282,10 @@ class YOLOLayer(nn.Module):
 
         # build xy offsets
         if not self.training:
-            yv, xv = torch.meshgrid([torch.arange(self.ny, device=device), torch.arange(self.nx, device=device)])
+            yv, xv = torch.meshgrid(
+                [torch.arange(self.ny).to(device), torch.arange(self.nx).to(device)],
+                indexing='ij'
+            )
             self.grid = torch.stack((xv, yv), 2).view((1, 1, self.ny, self.nx, 2)).float()
 
         if self.anchor_vec.device != device:
@@ -375,7 +378,10 @@ class JDELayer(nn.Module):
 
         # build xy offsets
         if not self.training:
-            yv, xv = torch.meshgrid([torch.arange(self.ny, device=device), torch.arange(self.nx, device=device)])
+            yv, xv = torch.meshgrid(
+                [torch.arange(self.ny).to(device), torch.arange(self.nx).to(device)],
+                indexing='ij'
+            )
             self.grid = torch.stack((xv, yv), 2).view((1, 1, self.ny, self.nx, 2)).float()
 
         if self.anchor_vec.device != device:

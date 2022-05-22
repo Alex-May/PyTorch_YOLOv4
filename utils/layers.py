@@ -270,7 +270,9 @@ class DeformConv2d(nn.Module):
     def _get_p_n(self, N, dtype):
         p_n_x, p_n_y = torch.meshgrid(
             torch.arange(-(self.kernel_size-1)//2, (self.kernel_size-1)//2+1),
-            torch.arange(-(self.kernel_size-1)//2, (self.kernel_size-1)//2+1))
+            torch.arange(-(self.kernel_size-1)//2, (self.kernel_size-1)//2+1),
+            indexing='ij'
+        )
         # (2N, 1)
         p_n = torch.cat([torch.flatten(p_n_x), torch.flatten(p_n_y)], 0)
         p_n = p_n.view(1, 2*N, 1, 1).type(dtype)

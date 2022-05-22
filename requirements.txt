@@ -1,6 +1,6 @@
 numpy >= 1.18.5
 opencv-python >= 4.1.2
-torch >= 1.8.2
+torch >= 1.10
 torchvision >= 0.9.2
 torchaudio >= 0.8.2
 matplotlib >= 3.2.2
