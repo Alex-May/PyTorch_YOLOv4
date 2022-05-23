@@ -175,6 +175,16 @@ pip install -r requirements.txt
 python train.py --device 0 --batch-size 16 --img 640 640 --data coco.yaml --cfg cfg/yolov4-pacsp.cfg --weights '' --name yolov4-pacsp
 ```
 
+### Pre-trained models from AlexeyAB's GitHub (Optional)
+
+Download pre-trained weights for the convolutional layers and put to the directory `weights`
+  - for `yolov4.cfg` (alternative weights), [`yolov4-custom.cfg`](https://github.com/AlexeyAB/darknet#how-to-train-to-detect-your-custom-objects) (162 MB): [yolov4.conv.137](https://github.com/AlexeyAB/darknet/releases/download/darknet_yolo_v3_optimal/yolov4.conv.137)
+  - for `yolov4-tiny.cfg`, [`yolov4-tiny-custom.cfg`](https://github.com/AlexeyAB/darknet#how-to-train-tiny-yolo-to-detect-your-custom-objects) (19 MB): [yolov4-tiny.conv.29](https://github.com/AlexeyAB/darknet/releases/download/darknet_yolo_v4_pre/yolov4-tiny.conv.29)
+
+```
+python train.py --device 0 --batch-size 16 --img 640 640 --data coco.yaml --cfg cfg/yolov4.cfg --weights yolov4.conv.137 --name yolov4
+```
+
 ## Testing
 
 ```

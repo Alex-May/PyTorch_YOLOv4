@@ -449,7 +449,7 @@ class JDELayer(nn.Module):
             return io.view(bs, -1, self.no), p  # view [1, 3, 13, 13, 85] as [1, 507, 85]
 
 class Darknet(nn.Module):
-    # YOLOv3 object detection model
+    # YOLOv4 object detection model
 
     def __init__(self, cfg, img_size=(416, 416), verbose=False):
         super(Darknet, self).__init__()
@@ -579,10 +579,11 @@ def load_darknet_weights(self, weights, cutoff=-1):
 
     # Establish cutoffs (load layers between 0 and cutoff. if cutoff = -1 all are loaded)
     file = Path(weights).name
-    if file == 'darknet53.conv.74':
-        cutoff = 75
-    elif file == 'yolov3-tiny.conv.15':
-        cutoff = 15
+    
+    if file == 'yolov4.conv.137':
+        cutoff = 137
+    elif file == 'yolov4-tiny.conv.29':
+        cutoff = 29
 
     # Read weights file
     with open(weights, 'rb') as f:
@@ -622,7 +623,7 @@ def load_darknet_weights(self, weights, cutoff=-1):
             nw = conv.weight.numel()  # number of weights
             conv.weight.data.copy_(torch.from_numpy(weights[ptr:ptr + nw]).view_as(conv.weight))
             ptr += nw
-
+    print(f'Darknet weights loaded from {file}')
 
 def save_weights(self, path='model.weights', cutoff=-1):
     # Converts a PyTorch model to Darket format (*.pt to *.weights)
@@ -650,35 +651,59 @@ def save_weights(self, path='model.weights', cutoff=-1):
                 conv_layer.weight.data.cpu().numpy().tofile(f)
 
 
-def convert(cfg='cfg/yolov3-spp.cfg', weights='weights/yolov3-spp.weights', saveto='converted.weights'):
+def convert(cfg='cfg/yolov4.cfg', weights='weights/yolov4.weights', saveto='weights'):
     # Converts between PyTorch and Darknet format per extension (i.e. *.weights convert to *.pt and vice versa)
-    # from models import *; convert('cfg/yolov3-spp.cfg', 'weights/yolov3-spp.weights')
+    # from models import *; convert('cfg/yolov4.cfg', 'weights/yolov4.weights')
 
     # Initialize model
     model = Darknet(cfg)
-    ckpt = torch.load(weights)  # load checkpoint
+
     try:
-        ckpt['model'] = {k: v for k, v in ckpt['model'].items() if model.state_dict()[k].numel() == v.numel()}
-        model.load_state_dict(ckpt['model'], strict=False)
-        save_weights(model, path=saveto, cutoff=-1)
+        if weights.endswith('.pt'):           # If PyTorch format
+            model.load_state_dict(torch.load(weights)['model'])
+            newname = weights.rsplit('.', 1)[0] + '.weights'
+            filepath = Path(saveto) / newname
+            save_weights(model, path=filepath, cutoff=-1)
+        else:                       # Darknet format
+            load_darknet_weights(model, weights)
+            ckpt = {'epoch': -1,
+                    'best_fitness': None,
+                    'best_fitness_p': None,
+                    'best_fitness_r': None,
+                    'best_fitness_ap50': None,
+                    'best_fitness_ap': None,
+                    'best_fitness_f': None,
+                    'training_results': None,
+                    'model': model.state_dict(),
+                    'optimizer': None,
+                    'wandb_id': None}
+            if weights.endswith('.weights'):
+                newname = weights.rsplit('.', 1)[0] + '.pt'
+            else:
+                newname = weights.replace('.', '_') + '.pt'
+            filepath = Path(saveto) / newname
+            torch.save(ckpt, filepath)
+        
+        print("Success: converted '%s' to '%s'" % (weights, newname))
     except KeyError as e:
         print(e)
 
 def attempt_download(weights):
     # Attempt to download pretrained weights if not found locally
     weights = weights.strip()
-    msg = weights + ' missing, try downloading from https://drive.google.com/open?id=1LezFG5g3BCW6iYaV89B2i64cqEUZD7e0'
+    msg = weights + ' missing, try downloading from https://github.com/AlexeyAB/darknet/releases/tag/yolov4'
 
     if len(weights) > 0 and not os.path.isfile(weights):
         d = {''}
 
-        file = Path(weights).name
-        if file in d:
-            r = gdrive_download(id=d[file], name=weights)
-        else:  # download from pjreddie.com
-            url = 'https://pjreddie.com/media/files/' + file
+        fname = Path(weights).name
+        if fname in d:
+            r = gdrive_download(id=d[fname], name=weights)
+        else:  # download from AlexeyAB's GitHub
+            url = 'https://github.com/AlexeyAB/darknet/releases/download/yolov4/' + fname
             print('Downloading ' + url)
-            r = os.system('curl -f ' + url + ' -o ' + weights)
+            
+            r = os.system(f"curl -L '{url}' -o '{weights}' --retry 3 -C -")
 
         # Error check
         if not (r == 0 and os.path.exists(weights) and os.path.getsize(weights) > 1E6):  # weights exist and > 1MB

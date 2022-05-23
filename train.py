@@ -72,18 +72,8 @@ def train(hyp, opt, device, tb_writer=None, wandb=None):
     nc, names = (1, ['item']) if opt.single_cls else (int(data_dict['nc']), data_dict['names'])  # number classes, names
     assert len(names) == nc, '%g names found for nc=%g dataset in %s' % (len(names), nc, opt.data)  # check
 
-    # Model
-    pretrained = weights.endswith('.pt')
-    if pretrained:
-        with torch_distributed_zero_first(rank):
-            attempt_download(weights)  # download if not found locally
-        ckpt = torch.load(weights, map_location=device)  # load checkpoint
-        model = Darknet(opt.cfg).to(device)  # create
-        state_dict = {k: v for k, v in ckpt['model'].items() if model.state_dict()[k].numel() == v.numel()}
-        model.load_state_dict(state_dict, strict=False)
-        print('Transferred %g/%g items from %s' % (len(state_dict), len(model.state_dict()), weights))  # report
-    else:
-        model = Darknet(opt.cfg).to(device) # create
+    # Initialize model
+    model = Darknet(opt.cfg).to(device)
 
     # Optimizer
     nbs = 64  # nominal batch size
@@ -112,25 +102,25 @@ def train(hyp, opt, device, tb_writer=None, wandb=None):
     optimizer.add_param_group({'params': pg2})  # add pg2 (biases)
     logger.info('Optimizer groups: %g .bias, %g conv.weight, %g other' % (len(pg2), len(pg1), len(pg0)))
     del pg0, pg1, pg2
-
-    # Scheduler https://arxiv.org/pdf/1812.01187.pdf
-    # https://pytorch.org/docs/stable/_modules/torch/optim/lr_scheduler.html#OneCycleLR
-    lf = lambda x: ((1 + math.cos(x * math.pi / epochs)) / 2) * (1 - hyp['lrf']) + hyp['lrf']  # cosine
-    scheduler = lr_scheduler.LambdaLR(optimizer, lr_lambda=lf)
-    # plot_lr_scheduler(optimizer, scheduler, epochs)
-
-    # Logging
-    if wandb and wandb.run is None:
-        opt.hyp = hyp  # add hyperparameters
-        wandb_run = wandb.init(config=opt, resume="allow",
-                               project='YOLOv4' if opt.project == 'runs/train' else Path(opt.project).stem,
-                               name=save_dir.stem,
-                               id=ckpt.get('wandb_id') if 'ckpt' in locals() else None)
-
+    
     # Resume
     start_epoch, best_fitness = 0, 0.0
     best_fitness_p, best_fitness_r, best_fitness_ap50, best_fitness_ap, best_fitness_f = 0.0, 0.0, 0.0, 0.0, 0.0
-    if pretrained:
+    
+    with torch_distributed_zero_first(rank):
+        attempt_download(weights)  # download if not found locally
+
+    if weights.endswith('.pt'):
+        ckpt = torch.load(weights, map_location=device)  # load checkpoint
+        try:
+            state_dict = {k: v for k, v in ckpt['model'].items() if model.state_dict()[k].numel() == v.numel()}
+            model.load_state_dict(state_dict, strict=False)
+            print('Transferred %g/%g items from %s' % (len(state_dict), len(model.state_dict()), weights))  # report
+        except:
+            s = "%s is not compatible with %s. Specify --weights '' or specify a --cfg compatible with %s. " \
+                "See https://github.com/ultralytics/yolov3/issues/657" % (opt.weights, opt.cfg, opt.weights)
+            raise KeyError(s) from e
+
         # Optimizer
         if ckpt['optimizer'] is not None:
             optimizer.load_state_dict(ckpt['optimizer'])
@@ -156,6 +146,32 @@ def train(hyp, opt, device, tb_writer=None, wandb=None):
             epochs += ckpt['epoch']  # finetune additional epochs
 
         del ckpt, state_dict
+
+    elif len(weights) > 0:  # Darknet format
+        try:
+            load_darknet_weights(model, weights)
+        except:
+            s = "%s Darknet weights is not supported." \
+                "See https://github.com/AlexeyAB/darknet#how-to-train-to-detect-your-custom-objects" % (opt.weights)
+            raise KeyError(s) from e
+        
+
+
+    # Scheduler https://arxiv.org/pdf/1812.01187.pdf
+    # https://pytorch.org/docs/stable/_modules/torch/optim/lr_scheduler.html#OneCycleLR
+    lf = lambda x: ((1 + math.cos(x * math.pi / epochs)) / 2) * (1 - hyp['lrf']) + hyp['lrf']  # cosine
+    scheduler = lr_scheduler.LambdaLR(optimizer, lr_lambda=lf)
+    # plot_lr_scheduler(optimizer, scheduler, epochs)
+
+    # Logging
+    if wandb and wandb.run is None:
+        opt.hyp = hyp  # add hyperparameters
+        wandb_run = wandb.init(config=opt, resume="allow",
+                               project='YOLOv4' if opt.project == 'runs/train' else Path(opt.project).stem,
+                               name=save_dir.stem,
+                               id=ckpt.get('wandb_id') if 'ckpt' in locals() else None)
+
+
 
     # Image sizes
     gs = 64 #int(max(model.stride))  # grid size (max stride)
