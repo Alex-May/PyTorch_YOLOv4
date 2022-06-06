@@ -43,8 +43,8 @@ except ImportError:
 
 def train(hyp, opt, device, tb_writer=None, wandb=None):
     logger.info(f'Hyperparameters {hyp}')
-    save_dir, epochs, batch_size, total_batch_size, weights, rank = \
-        Path(opt.save_dir), opt.epochs, opt.batch_size, opt.total_batch_size, opt.weights, opt.global_rank
+    save_dir, epochs, batch_size, total_batch_size, ap_threshold, weights, rank = \
+        Path(opt.save_dir), opt.epochs, opt.batch_size, opt.total_batch_size, opt.ap_threshold, opt.weights, opt.global_rank
 
     # Directories
     wdir = save_dir / 'weights'
@@ -435,30 +435,29 @@ def train(hyp, opt, device, tb_writer=None, wandb=None):
 
                 # Save last, best and delete
                 torch.save(ckpt, last)
-                if best_fitness == fi:
-                    torch.save(ckpt, best)
-                if (best_fitness == fi) and (epoch >= 200):
-                    torch.save(ckpt, wdir / 'best_{:03d}.pt'.format(epoch))
-                if best_fitness == fi:
-                    torch.save(ckpt, wdir / 'best_overall.pt')
-                if best_fitness_p == fi_p:
-                    torch.save(ckpt, wdir / 'best_p.pt')
-                if best_fitness_r == fi_r:
-                    torch.save(ckpt, wdir / 'best_r.pt')
-                if best_fitness_ap50 == fi_ap50:
-                    torch.save(ckpt, wdir / 'best_ap50.pt')
-                if best_fitness_ap == fi_ap:
-                    torch.save(ckpt, wdir / 'best_ap.pt')
-                if best_fitness_f == fi_f:
-                    torch.save(ckpt, wdir / 'best_f.pt')
-                if epoch == 0:
-                    torch.save(ckpt, wdir / 'epoch_{:03d}.pt'.format(epoch))
-                if ((epoch+1) % 25) == 0:
-                    torch.save(ckpt, wdir / 'epoch_{:03d}.pt'.format(epoch))
-                if epoch >= (epochs-5):
-                    torch.save(ckpt, wdir / 'last_{:03d}.pt'.format(epoch))
-                elif epoch >= 420: 
-                    torch.save(ckpt, wdir / 'last_{:03d}.pt'.format(epoch))
+                new_best_ap50 = (best_fitness_ap50 == fi_ap50) and (fi_ap50 >= ap_threshold[0])
+                new_best_ap = (best_fitness_ap == fi_ap) and (fi_ap >= ap_threshold[1])
+                
+                if new_best_ap50 and new_best_ap:
+                    torch.save(ckpt, wdir / 'best_{:03d}.pt'.format(epoch)) 
+                elif new_best_ap50:
+                    torch.save(ckpt, wdir / 'best_ap50_{:03d}.pt'.format(epoch))
+                elif new_best_ap:
+                    torch.save(ckpt, wdir / 'best_ap_{:03d}.pt'.format(epoch))
+                    
+                if (epoch + 1) >= int(epochs * 0.1):
+                    if best_fitness == fi:
+                        torch.save(ckpt, best)
+                    if best_fitness_p == fi_p:
+                        torch.save(ckpt, wdir / 'best_p.pt')
+                    if best_fitness_r == fi_r:
+                        torch.save(ckpt, wdir / 'best_r.pt')
+                    if best_fitness_ap50 == fi_ap50:
+                        torch.save(ckpt, wdir / 'best_ap50.pt')
+                    if best_fitness_ap == fi_ap:
+                        torch.save(ckpt, wdir / 'best_ap.pt')
+                    if best_fitness_f == fi_f:
+                        torch.save(ckpt, wdir / 'best_f.pt')
                 del ckpt
         # end epoch ----------------------------------------------------------------------------------------------------
     # end training
@@ -497,6 +496,7 @@ if __name__ == '__main__':
     parser.add_argument('--epochs', type=int, default=300)
     parser.add_argument('--batch-size', type=int, default=16, help='total batch size for all GPUs')
     parser.add_argument('--img-size', nargs='+', type=int, default=[640, 640], help='[train, test] image sizes')
+    parser.add_argument('--ap-threshold', nargs='+', type=float, default=[0.6, 0.4], help='[ap50, ap] threshold to save')
     parser.add_argument('--rect', action='store_true', help='rectangular training')
     parser.add_argument('--resume', nargs='?', const=True, default=False, help='resume most recent training')
     parser.add_argument('--nosave', action='store_true', help='only save final checkpoint')
