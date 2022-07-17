@@ -93,8 +93,12 @@ def compute_loss(p, targets, model):  # predictions, targets, model
             ps = pi[b, a, gj, gi]  # prediction subset corresponding to targets
 
             # Regression
-            pxy = ps[:, :2].sigmoid() * 2. - 0.5
-            pwh = (ps[:, 2:4].sigmoid() * 2) ** 2 * anchors[i]
+            # YOLOv4
+            pxy = ps[:, :2].sigmoid() * 1.1 - 0.05
+            pwh = ps[:, 2:4].exp().clamp(max=1E3) * anchors[i]
+            # YOLOv4-CSP
+            #pxy = ps[:, :2].sigmoid() * 2. - 0.5
+            #pwh = (ps[:, 2:4].sigmoid() * 2) ** 2 * anchors[i]
             pbox = torch.cat((pxy, pwh), 1).to(device)  # predicted box
             iou = bbox_iou(pbox.T, tbox[i], x1y1x2y2=False, CIoU=True)  # iou(prediction, target)
             lbox += (1.0 - iou).mean()  # iou loss
@@ -127,7 +131,7 @@ def compute_loss(p, targets, model):  # predictions, targets, model
 def build_targets(p, targets, model):
     nt = targets.shape[0]  # number of anchors, targets
     tcls, tbox, indices, anch = [], [], [], []
-    gain = torch.ones(6, device=targets.device)  # normalized to gridspace gain
+    gain = torch.ones(6, device=targets.device).long()  # normalized to gridspace gain
     off = torch.tensor([[1, 0], [0, 1], [-1, 0], [0, -1]], device=targets.device).float()  # overlap offsets
 
     g = 0.5  # offset
