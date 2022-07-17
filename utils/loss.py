@@ -94,7 +94,7 @@ def compute_loss(p, targets, model):  # predictions, targets, model
 
             # Regression
             # YOLOv4
-            pxy = ps[:, :2].sigmoid() * 1.1 - 0.05
+            pxy = ps[:, :2].sigmoid()
             pwh = ps[:, 2:4].exp().clamp(max=1E3) * anchors[i]
             # YOLOv4-CSP
             #pxy = ps[:, :2].sigmoid() * 2. - 0.5
