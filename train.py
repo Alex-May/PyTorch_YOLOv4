@@ -73,7 +73,7 @@ def train(hyp, opt, device, tb_writer=None, wandb=None):
     assert len(names) == nc, '%g names found for nc=%g dataset in %s' % (len(names), nc, opt.data)  # check
 
     # Initialize model
-    model = Darknet(opt.cfg).to(device)
+    model = Darknet(opt.cfg, tuple(opt.img_size)).to(device)
 
     # Optimizer
     nbs = 64  # nominal batch size
