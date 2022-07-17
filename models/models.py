@@ -341,15 +341,23 @@ class YOLOLayer(nn.Module):
             return p_cls, xy * ng, wh
 
         else:  # inference
-            io = p.sigmoid()
-            io[..., :2] = (io[..., :2] * 2. - 0.5 + self.grid)
-            io[..., 2:4] = (io[..., 2:4] * 2) ** 2 * self.anchor_wh
-            io[..., :4] *= self.stride
-            #io = p.clone()  # inference output
+            # YOLOv3 - Ultralytics
+            io = p.clone()  # inference output
             #io[..., :2] = torch.sigmoid(io[..., :2]) + self.grid  # xy
             #io[..., 2:4] = torch.exp(io[..., 2:4]) * self.anchor_wh  # wh yolo method
             #io[..., :4] *= self.stride
             #torch.sigmoid_(io[..., 4:])
+            
+            # YOLOv4
+            io[..., :2] = torch.sigmoid(io[..., :2]) * 1.1 - 0.05 + self.grid  # xy
+            io[..., 2:4] = torch.exp(io[..., 2:4]) * self.anchor_wh  # wh yolo method
+            
+            # YOLOv4-CSP
+            #io = p.sigmoid()
+            #io[..., :2] = (io[..., :2] * 2. - 0.5 + self.grid)
+            #io[..., 2:4] = (io[..., 2:4] * 2) ** 2 * self.anchor_wh
+            io[..., :4] *= self.stride
+            
             return io.view(bs, -1, self.no), p  # view [1, 3, 13, 13, 85] as [1, 507, 85]
 
 
@@ -436,15 +444,23 @@ class JDELayer(nn.Module):
                 torch.sigmoid(p[:, 5:self.no]) * torch.sigmoid(p[:, 4:5])  # conf
             return p_cls, xy * ng, wh
 
-        else:  # inference
+        else:  # inference            
+            # YOLOv4
+            io = p.clone()  # inference output
+            io[..., :2] = torch.sigmoid(io[..., :2]) * 1.1 - 0.05 + self.grid  # xy
+            io[..., 2:4] = torch.exp(io[..., 2:4]) * self.anchor_wh  # wh yolo method
+            
+            # YOLOv4-CSP
             #io = p.sigmoid()
             #io[..., :2] = (io[..., :2] * 2. - 0.5 + self.grid)
             #io[..., 2:4] = (io[..., 2:4] * 2) ** 2 * self.anchor_wh
             #io[..., :4] *= self.stride
-            io = p.clone()  # inference output
-            io[..., :2] = torch.sigmoid(io[..., :2]) * 2. - 0.5 + self.grid  # xy
-            io[..., 2:4] = (torch.sigmoid(io[..., 2:4]) * 2) ** 2 * self.anchor_wh  # wh yolo method
+            #io = p.clone()  # inference output
+            #io[..., :2] = torch.sigmoid(io[..., :2]) * 2. - 0.5 + self.grid  # xy
+            #io[..., 2:4] = (torch.sigmoid(io[..., 2:4]) * 2) ** 2 * self.anchor_wh  # wh yolo method
             io[..., :4] *= self.stride
+            
+            
             io[..., 4:] = F.softmax(io[..., 4:])
             return io.view(bs, -1, self.no), p  # view [1, 3, 13, 13, 85] as [1, 507, 85]
 
@@ -574,13 +590,17 @@ def get_yolo_layers(model):
     return [i for i, m in enumerate(model.module_list) if m.__class__.__name__ in ['YOLOLayer', 'JDELayer']]  # [89, 101, 113]
 
 
-def load_darknet_weights(self, weights, cutoff=-1):
+def load_darknet_weights(self, weights, cutoff=-1, clear=True):
     # Parses and loads the weights stored in 'weights'
 
     # Establish cutoffs (load layers between 0 and cutoff. if cutoff = -1 all are loaded)
     file = Path(weights).name
     
-    if file == 'yolov4.conv.137':
+    if file == 'darknet53.conv.74':
+        cutoff = 75
+    elif file == 'yolov3-tiny.conv.15':
+        cutoff = 15
+    elif file == 'yolov4.conv.137':
         cutoff = 137
     elif file == 'yolov4-tiny.conv.29':
         cutoff = 29
@@ -590,6 +610,8 @@ def load_darknet_weights(self, weights, cutoff=-1):
         # Read Header https://github.com/AlexeyAB/darknet/issues/2914#issuecomment-496675346
         self.version = np.fromfile(f, dtype=np.int32, count=3)  # (int32) version info: major, minor, revision
         self.seen = np.fromfile(f, dtype=np.int64, count=1)  # (int64) number of images seen during training
+        if clear:
+            self.seen = np.array([0], dtype=np.int64) # If are pretrained
 
         weights = np.fromfile(f, dtype=np.float32)  # the rest are weights
 
