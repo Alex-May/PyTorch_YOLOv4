@@ -349,7 +349,7 @@ class YOLOLayer(nn.Module):
             #torch.sigmoid_(io[..., 4:])
             
             # YOLOv4
-            io[..., :2] = torch.sigmoid(io[..., :2]) * 1.1 - 0.05 + self.grid  # xy
+            io[..., :2] = torch.sigmoid(io[..., :2]) + self.grid  # xy
             io[..., 2:4] = torch.exp(io[..., 2:4]) * self.anchor_wh  # wh yolo method
             
             # YOLOv4-CSP
@@ -447,7 +447,7 @@ class JDELayer(nn.Module):
         else:  # inference            
             # YOLOv4
             io = p.clone()  # inference output
-            io[..., :2] = torch.sigmoid(io[..., :2]) * 1.1 - 0.05 + self.grid  # xy
+            io[..., :2] = torch.sigmoid(io[..., :2]) + self.grid  # xy
             io[..., 2:4] = torch.exp(io[..., 2:4]) * self.anchor_wh  # wh yolo method
             
             # YOLOv4-CSP
