@@ -458,9 +458,8 @@ class JDELayer(nn.Module):
             #io = p.clone()  # inference output
             #io[..., :2] = torch.sigmoid(io[..., :2]) * 2. - 0.5 + self.grid  # xy
             #io[..., 2:4] = (torch.sigmoid(io[..., 2:4]) * 2) ** 2 * self.anchor_wh  # wh yolo method
+            
             io[..., :4] *= self.stride
-            
-            
             io[..., 4:] = F.softmax(io[..., 4:])
             return io.view(bs, -1, self.no), p  # view [1, 3, 13, 13, 85] as [1, 507, 85]
 
@@ -614,9 +613,11 @@ def load_darknet_weights(self, weights, cutoff=-1, clear=True):
             self.seen = np.array([0], dtype=np.int64) # If are pretrained
 
         weights = np.fromfile(f, dtype=np.float32)  # the rest are weights
-
+    
     ptr = 0
+    cocow = 255 * 256
     for i, (mdef, module) in enumerate(zip(self.module_defs[:cutoff], self.module_list[:cutoff])):
+        before_yolo = self.module_defs[i + 1]['type'] == "yolo"
         if mdef['type'] == 'convolutional':
             conv = module[0]
             if mdef['batch_normalize']:
@@ -640,10 +641,15 @@ def load_darknet_weights(self, weights, cutoff=-1, clear=True):
                 nb = conv.bias.numel()
                 conv_b = torch.from_numpy(weights[ptr:ptr + nb]).view_as(conv.bias)
                 conv.bias.data.copy_(conv_b)
+                if before_yolo and nb != 255:
+                    nb = 255
                 ptr += nb
             # Load conv. weights
             nw = conv.weight.numel()  # number of weights
             conv.weight.data.copy_(torch.from_numpy(weights[ptr:ptr + nw]).view_as(conv.weight))
+            if before_yolo:
+                nw = cocow
+                cocow *= 2
             ptr += nw
     print(f'Darknet weights loaded from {file}')
 
