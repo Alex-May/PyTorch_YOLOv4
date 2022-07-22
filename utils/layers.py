@@ -26,7 +26,7 @@ class Flatten(nn.Module):
 class Concat(nn.Module):
     # Concatenate a list of tensors along dimension
     def __init__(self, dimension=1):
-        super(Concat, self).__init__()
+        super().__init__()
         self.d = dimension
 
     def forward(self, x):
@@ -35,7 +35,7 @@ class Concat(nn.Module):
 
 class FeatureConcat(nn.Module):
     def __init__(self, layers):
-        super(FeatureConcat, self).__init__()
+        super().__init__()
         self.layers = layers  # layer indices
         self.multiple = len(layers) > 1  # multiple layers flag
 
@@ -45,7 +45,7 @@ class FeatureConcat(nn.Module):
 
 class FeatureConcat2(nn.Module):
     def __init__(self, layers):
-        super(FeatureConcat2, self).__init__()
+        super().__init__()
         self.layers = layers  # layer indices
         self.multiple = len(layers) > 1  # multiple layers flag
 
@@ -55,7 +55,7 @@ class FeatureConcat2(nn.Module):
 
 class FeatureConcat3(nn.Module):
     def __init__(self, layers):
-        super(FeatureConcat3, self).__init__()
+        super().__init__()
         self.layers = layers  # layer indices
         self.multiple = len(layers) > 1  # multiple layers flag
 
@@ -65,7 +65,7 @@ class FeatureConcat3(nn.Module):
 
 class FeatureConcat_l(nn.Module):
     def __init__(self, layers):
-        super(FeatureConcat_l, self).__init__()
+        super().__init__()
         self.layers = layers  # layer indices
         self.multiple = len(layers) > 1  # multiple layers flag
 
@@ -75,7 +75,7 @@ class FeatureConcat_l(nn.Module):
 
 class WeightedFeatureFusion(nn.Module):  # weighted sum of 2 or more layers https://arxiv.org/abs/1911.09070
     def __init__(self, layers, weight=False):
-        super(WeightedFeatureFusion, self).__init__()
+        super().__init__()
         self.layers = layers  # layer indices
         self.weight = weight  # apply weights boolean
         self.n = len(layers) + 1  # number of layers
@@ -107,7 +107,7 @@ class WeightedFeatureFusion(nn.Module):  # weighted sum of 2 or more layers http
 
 class MixConv2d(nn.Module):  # MixConv: Mixed Depthwise Convolutional Kernels https://arxiv.org/abs/1907.09595
     def __init__(self, in_ch, out_ch, k=(3, 5, 7), stride=1, dilation=1, bias=True, method='equal_params'):
-        super(MixConv2d, self).__init__()
+        super().__init__()
 
         groups = len(k)
         if method == 'equal_ch':  # equal channels per group
@@ -133,61 +133,13 @@ class MixConv2d(nn.Module):  # MixConv: Mixed Depthwise Convolutional Kernels ht
         return torch.cat([m(x) for m in self.m], 1)
 
 
-# Activation functions below -------------------------------------------------------------------------------------------
-class SwishImplementation(torch.autograd.Function):
-    @staticmethod
-    def forward(ctx, x):
-        ctx.save_for_backward(x)
-        return x * torch.sigmoid(x)
-
-    @staticmethod
-    def backward(ctx, grad_output):
-        x = ctx.saved_tensors[0]
-        sx = torch.sigmoid(x)  # sigmoid(ctx)
-        return grad_output * (sx * (1 + x * (1 - sx)))
-
-
-class MishImplementation(torch.autograd.Function):
-    @staticmethod
-    def forward(ctx, x):
-        ctx.save_for_backward(x)
-        return x.mul(torch.tanh(F.softplus(x)))  # x * tanh(ln(1 + exp(x)))
-
-    @staticmethod
-    def backward(ctx, grad_output):
-        x = ctx.saved_tensors[0]
-        sx = torch.sigmoid(x)
-        fx = F.softplus(x).tanh()
-        return grad_output * (fx + x * sx * (1 - fx * fx))
-
-
-class MemoryEfficientSwish(nn.Module):
-    def forward(self, x):
-        return SwishImplementation.apply(x)
-
-
-class MemoryEfficientMish(nn.Module):
-    def forward(self, x):
-        return MishImplementation.apply(x)
-
-
-class Swish(nn.Module):
-    def forward(self, x):
-        return x * torch.sigmoid(x)
-
-
-class HardSwish(nn.Module):  # https://arxiv.org/pdf/1905.02244.pdf
-    def forward(self, x):
-        return x * F.hardtanh(x + 3, 0., 6., True) / 6.
-
-
 class DeformConv2d(nn.Module):
     def __init__(self, inc, outc, kernel_size=3, padding=1, stride=1, bias=None, modulation=False):
         """
         Args:
             modulation (bool, optional): If True, Modulated Defomable Convolution (Deformable ConvNets v2).
         """
-        super(DeformConv2d, self).__init__()
+        super().__init__()
         self.kernel_size = kernel_size
         self.padding = padding
         self.stride = stride
@@ -326,7 +278,7 @@ class DeformConv2d(nn.Module):
     
 class GAP(nn.Module):
     def __init__(self):
-        super(GAP, self).__init__()
+        super().__init__()
         self.avg_pool = nn.AdaptiveAvgPool2d(1)
     def forward(self, x):
         #b, c, _, _ = x.size()        
@@ -335,14 +287,14 @@ class GAP(nn.Module):
     
 class Silence(nn.Module):
     def __init__(self):
-        super(Silence, self).__init__()
+        super().__init__()
     def forward(self, x):    
         return x
 
 
 class ScaleChannel(nn.Module):  # weighted sum of 2 or more layers https://arxiv.org/abs/1911.09070
     def __init__(self, layers):
-        super(ScaleChannel, self).__init__()
+        super().__init__()
         self.layers = layers  # layer indices
 
     def forward(self, x, outputs):
@@ -352,7 +304,7 @@ class ScaleChannel(nn.Module):  # weighted sum of 2 or more layers https://arxiv
 
 class ScaleSpatial(nn.Module):  # weighted sum of 2 or more layers https://arxiv.org/abs/1911.09070
     def __init__(self, layers):
-        super(ScaleSpatial, self).__init__()
+        super().__init__()
         self.layers = layers  # layer indices
 
     def forward(self, x, outputs):
