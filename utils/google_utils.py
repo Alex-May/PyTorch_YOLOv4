@@ -97,7 +97,7 @@ def get_token(cookie="./cookie"):
 class Ensemble(nn.ModuleList):
     # Ensemble of models
     def __init__(self):
-        super(Ensemble, self).__init__()
+        super().__init__()
 
     def forward(self, x, augment=False):
         y = []
