@@ -259,7 +259,7 @@ def create_modules(module_defs, img_size, cfg):
 
 class YOLOLayer(nn.Module):
     def __init__(self, anchors, nc, img_size, yolo_index, layers, stride):
-        super(YOLOLayer, self).__init__()
+        super().__init__()
         self.anchors = torch.Tensor(anchors)
         self.index = yolo_index  # index of this layer in layers
         self.layers = layers  # model output layer indices
@@ -341,29 +341,25 @@ class YOLOLayer(nn.Module):
             return p_cls, xy * ng, wh
 
         else:  # inference
-            # YOLOv3 - Ultralytics
+            # YOLOv3 - Ultralytics /-/ YOLOv4
             io = p.clone()  # inference output
-            #io[..., :2] = torch.sigmoid(io[..., :2]) + self.grid  # xy
-            #io[..., 2:4] = torch.exp(io[..., 2:4]) * self.anchor_wh  # wh yolo method
-            #io[..., :4] *= self.stride
-            #torch.sigmoid_(io[..., 4:])
-            
-            # YOLOv4
             io[..., :2] = torch.sigmoid(io[..., :2]) + self.grid  # xy
             io[..., 2:4] = torch.exp(io[..., 2:4]) * self.anchor_wh  # wh yolo method
+            io[..., :4] *= self.stride
+            torch.sigmoid_(io[..., 4:])
             
             # YOLOv4-CSP
-            #io = p.sigmoid()
-            #io[..., :2] = (io[..., :2] * 2. - 0.5 + self.grid)
-            #io[..., 2:4] = (io[..., 2:4] * 2) ** 2 * self.anchor_wh
-            io[..., :4] *= self.stride
+            # io = p.sigmoid()
+            # io[..., :2] = (io[..., :2] * 2. - 0.5 + self.grid)
+            # io[..., 2:4] = (io[..., 2:4] * 2) ** 2 * self.anchor_wh
+            # io[..., :4] *= self.stride
             
             return io.view(bs, -1, self.no), p  # view [1, 3, 13, 13, 85] as [1, 507, 85]
 
 
 class JDELayer(nn.Module):
     def __init__(self, anchors, nc, img_size, yolo_index, layers, stride):
-        super(JDELayer, self).__init__()
+        super().__init__()
         self.anchors = torch.Tensor(anchors)
         self.index = yolo_index  # index of this layer in layers
         self.layers = layers  # model output layer indices
@@ -444,18 +440,14 @@ class JDELayer(nn.Module):
                 torch.sigmoid(p[:, 5:self.no]) * torch.sigmoid(p[:, 4:5])  # conf
             return p_cls, xy * ng, wh
 
-        else:  # inference            
-            # YOLOv4
+        else:  # inference     
             io = p.clone()  # inference output
+            
+            # YOLOv3 - Ultralytics /-/ YOLOv4
             io[..., :2] = torch.sigmoid(io[..., :2]) + self.grid  # xy
             io[..., 2:4] = torch.exp(io[..., 2:4]) * self.anchor_wh  # wh yolo method
             
             # YOLOv4-CSP
-            #io = p.sigmoid()
-            #io[..., :2] = (io[..., :2] * 2. - 0.5 + self.grid)
-            #io[..., 2:4] = (io[..., 2:4] * 2) ** 2 * self.anchor_wh
-            #io[..., :4] *= self.stride
-            #io = p.clone()  # inference output
             #io[..., :2] = torch.sigmoid(io[..., :2]) * 2. - 0.5 + self.grid  # xy
             #io[..., 2:4] = (torch.sigmoid(io[..., 2:4]) * 2) ** 2 * self.anchor_wh  # wh yolo method
             
@@ -467,7 +459,7 @@ class Darknet(nn.Module):
     # YOLOv4 object detection model
 
     def __init__(self, cfg, img_size=(416, 416), verbose=False):
-        super(Darknet, self).__init__()
+        super().__init__()
 
         self.module_defs = parse_model_cfg(cfg)
         self.module_list, self.routs = create_modules(self.module_defs, img_size, cfg)
@@ -610,7 +602,7 @@ def load_darknet_weights(self, weights, cutoff=-1, clear=True):
         self.version = np.fromfile(f, dtype=np.int32, count=3)  # (int32) version info: major, minor, revision
         self.seen = np.fromfile(f, dtype=np.int64, count=1)  # (int64) number of images seen during training
         if clear:
-            self.seen = np.array([0], dtype=np.int64) # If are pretrained
+            self.seen = np.array([0], dtype=np.int64) # If is a new training
 
         weights = np.fromfile(f, dtype=np.float32)  # the rest are weights
     
