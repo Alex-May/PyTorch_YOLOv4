@@ -188,7 +188,8 @@ def create_modules(module_defs, img_size, cfg):
 
         elif mdef['type'] == 'yolo':
             yolo_index += 1
-            new_coords = True if mdef['new_coords'] else False
+            new_coords = True if mdef.get('new_coords', 0) else False
+            scale_x_y = mdef.get('scale_x_y', 1)
             stride = [8, 16, 32, 64, 128]  # P3, P4, P5, P6, P7 strides
             if any(x in cfg for x in ['yolov4-tiny', 'fpn', 'yolov3']):  # P5, P4, P3 strides
                 stride = [32, 16, 8]
@@ -199,7 +200,8 @@ def create_modules(module_defs, img_size, cfg):
                                 yolo_index=yolo_index,  # 0, 1, 2...
                                 layers=layers,  # output layers
                                 stride=stride[yolo_index],
-                                new_coords=new_coords)
+                                new_coords=new_coords,
+                                scale_x_y=scale_x_y)
 
             # Initialize preceding Conv2d() bias (https://arxiv.org/pdf/1708.02002.pdf section 3.3)
             try:
@@ -224,7 +226,8 @@ def create_modules(module_defs, img_size, cfg):
 
         elif mdef['type'] == 'jde':
             yolo_index += 1
-            new_coords = True if mdef['new_coords'] else False
+            new_coords = True if mdef.get('new_coords', 0) else False
+            scale_x_y = mdef.get('scale_x_y', 1)
             stride = [8, 16, 32, 64, 128]  # P3, P4, P5, P6, P7 strides
             if any(x in cfg for x in ['yolov4-tiny', 'fpn', 'yolov3']):  # P5, P4, P3 strides
                 stride = [32, 16, 8]
@@ -235,7 +238,8 @@ def create_modules(module_defs, img_size, cfg):
                                 yolo_index=yolo_index,  # 0, 1, 2...
                                 layers=layers,  # output layers
                                 stride=stride[yolo_index],
-                                new_coords=new_coords)
+                                new_coords=new_coords,
+                                scale_x_y=scale_x_y)
 
             # Initialize preceding Conv2d() bias (https://arxiv.org/pdf/1708.02002.pdf section 3.3)
             try:
@@ -264,7 +268,7 @@ def create_modules(module_defs, img_size, cfg):
 
 
 class YOLOLayer(nn.Module):
-    def __init__(self, anchors, nc, img_size, yolo_index, layers, stride, new_coords=True):
+    def __init__(self, anchors, nc, img_size, yolo_index, layers, stride, new_coords=True, scale_x_y):
         super().__init__()
         self.anchors = torch.Tensor(anchors)
         self.index = yolo_index  # index of this layer in layers
@@ -360,7 +364,9 @@ class YOLOLayer(nn.Module):
         else:
             # YOLOv3 - Ultralytics /-/ YOLOv4
             io = p.clone()  # inference output
-            io[..., :2] = torch.sigmoid(io[..., :2]) + self.grid  # xy
+            a = self.scale_x_y
+            b = (a-1)*0.5
+            io[..., :2] = torch.sigmoid(io[..., :2]) * a - b + self.grid  # xy
             io[..., 2:4] = torch.exp(io[..., 2:4]) * self.anchor_wh  # wh yolo method
             io[..., :4] *= self.stride
             torch.sigmoid_(io[..., 4:])
@@ -369,7 +375,7 @@ class YOLOLayer(nn.Module):
 
 
 class JDELayer(nn.Module):
-    def __init__(self, anchors, nc, img_size, yolo_index, layers, stride, new_coords=True):
+    def __init__(self, anchors, nc, img_size, yolo_index, layers, stride, new_coords=True, scale_x_y):
         super().__init__()
         self.anchors = torch.Tensor(anchors)
         self.index = yolo_index  # index of this layer in layers
@@ -454,14 +460,15 @@ class JDELayer(nn.Module):
 
         else:  # inference     
             io = p.clone()  # inference output
+            a = self.scale_x_y
+            b = (a-1)*0.5
+            io[..., :2] = torch.sigmoid(io[..., :2]) * a - b + self.grid  # xy
             
             if self.new_coords:
                 # YOLOv5
-                io[..., :2] = torch.sigmoid(io[..., :2]) * 2. - 0.5 + self.grid  # xy
                 io[..., 2:4] = (torch.sigmoid(io[..., 2:4]) * 2) ** 2 * self.anchor_wh  # wh yolo method
             else:
                 # YOLOv3 - Ultralytics /-/ YOLOv4
-                io[..., :2] = torch.sigmoid(io[..., :2]) + self.grid  # xy
                 io[..., 2:4] = torch.exp(io[..., 2:4]) * self.anchor_wh  # wh yolo method
             
             io[..., :4] *= self.stride
@@ -486,11 +493,12 @@ class Darknet(nn.Module):
 
         for i, mdef in enumerate(self.module_defs):
             if mdef['type'] == 'yolo':
-                self.iou_loss = mdef['iou_loss'] if mdef['iou_loss'] else 'giou'
-                self.new_coords = True if mdef['new_coords'] else False
+                self.iou_loss = mdef.get('iou_loss', 'giou')
+                self.new_coords = True if mdef.get('new_coords', 0) else False
                 break
 
         print(f"Using the loss function {self.iou_loss} for all yolo layers")
+        print(f"Using {'YOLOv5' if self.new_coords else "YOLOv4"} bounding box regression equations")
 
     def forward(self, x, augment=False, verbose=False):
 
