@@ -184,7 +184,12 @@ def clip_coords(boxes, img_shape):
     boxes[:, 3].clamp_(0, img_shape[0])  # y2
 
 
-def bbox_iou(box1, box2, x1y1x2y2=True, GIoU=False, DIoU=False, CIoU=False, EIoU=False, ECIoU=False, eps=1e-9):
+def bbox_iou(box1, box2, x1y1x2y2=True, iou_loss='ciou', eps=1e-9):
+    GIoU = True if iou_loss=='giou' else False
+    DIoU = True if iou_loss=='diou' else False
+    CIoU = True if iou_loss=='ciou' else False
+    EIoU = True if iou_loss=='eiou' else False
+    ECIoU = True if iou_loss=='eciou' else False
     # Returns the IoU of box1 to box2. box1 is 4, box2 is nx4
     box2 = box2.T
 

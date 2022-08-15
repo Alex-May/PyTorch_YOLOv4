@@ -93,14 +93,16 @@ def compute_loss(p, targets, model):  # predictions, targets, model
             ps = pi[b, a, gj, gi]  # prediction subset corresponding to targets
 
             # Regression
-            # YOLOv4
-            pxy = ps[:, :2].sigmoid()
-            pwh = ps[:, 2:4].exp().clamp(max=1E3) * anchors[i]
-            # YOLOv4-CSP
-            #pxy = ps[:, :2].sigmoid() * 2. - 0.5
-            #pwh = (ps[:, 2:4].sigmoid() * 2) ** 2 * anchors[i]
+            if model.new_coords:
+                # YOLOv5
+                pxy = ps[:, :2].sigmoid() * 2. - 0.5
+                pwh = (ps[:, 2:4].sigmoid() * 2) ** 2 * anchors[i]
+            else:
+                # YOLOv3 - Ultralytics /-/ YOLOv4
+                pxy = ps[:, :2].sigmoid()
+                pwh = ps[:, 2:4].exp().clamp(max=1E3) * anchors[i]
             pbox = torch.cat((pxy, pwh), 1).to(device)  # predicted box
-            iou = bbox_iou(pbox.T, tbox[i], x1y1x2y2=False, CIoU=True)  # iou(prediction, target)
+            iou = bbox_iou(pbox.T, tbox[i], x1y1x2y2=False, iou_loss=model.iou_loss)  # iou(prediction, target)
             lbox += (1.0 - iou).mean()  # iou loss
 
             # Objectness

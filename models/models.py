@@ -188,6 +188,7 @@ def create_modules(module_defs, img_size, cfg):
 
         elif mdef['type'] == 'yolo':
             yolo_index += 1
+            new_coords = True if mdef['new_coords'] else False
             stride = [8, 16, 32, 64, 128]  # P3, P4, P5, P6, P7 strides
             if any(x in cfg for x in ['yolov4-tiny', 'fpn', 'yolov3']):  # P5, P4, P3 strides
                 stride = [32, 16, 8]
@@ -197,15 +198,17 @@ def create_modules(module_defs, img_size, cfg):
                                 img_size=img_size,  # (416, 416)
                                 yolo_index=yolo_index,  # 0, 1, 2...
                                 layers=layers,  # output layers
-                                stride=stride[yolo_index])
+                                stride=stride[yolo_index],
+                                new_coords=new_coords)
 
             # Initialize preceding Conv2d() bias (https://arxiv.org/pdf/1708.02002.pdf section 3.3)
             try:
                 j = layers[yolo_index] if 'from' in mdef else -1
                 bias_ = module_list[j][0].bias  # shape(255,)
                 bias = bias_[:modules.no * modules.na].view(modules.na, -1)  # shape(3,85)
-                #bias[:, 4] += -4.5  # obj
-                bias.data[:, 4] += math.log(8 / (640 / stride[yolo_index]) ** 2)  # obj (8 objects per 640 image)
+                incr = math.log(8 / (640 / stride[yolo_index]) ** 2) if new_coords else -4.5
+                #bias[:, 4] += -4.5 # obj
+                bias.data[:, 4] += incr  # obj (8 objects per 640 image)
                 bias.data[:, 5:] += math.log(0.6 / (modules.nc - 0.99))  # cls (sigmoid(p) = 1/nc)
                 module_list[j][0].bias = torch.nn.Parameter(bias_, requires_grad=bias_.requires_grad)
                 
@@ -221,6 +224,7 @@ def create_modules(module_defs, img_size, cfg):
 
         elif mdef['type'] == 'jde':
             yolo_index += 1
+            new_coords = True if mdef['new_coords'] else False
             stride = [8, 16, 32, 64, 128]  # P3, P4, P5, P6, P7 strides
             if any(x in cfg for x in ['yolov4-tiny', 'fpn', 'yolov3']):  # P5, P4, P3 strides
                 stride = [32, 16, 8]
@@ -230,15 +234,17 @@ def create_modules(module_defs, img_size, cfg):
                                 img_size=img_size,  # (416, 416)
                                 yolo_index=yolo_index,  # 0, 1, 2...
                                 layers=layers,  # output layers
-                                stride=stride[yolo_index])
+                                stride=stride[yolo_index],
+                                new_coords=new_coords)
 
             # Initialize preceding Conv2d() bias (https://arxiv.org/pdf/1708.02002.pdf section 3.3)
             try:
                 j = layers[yolo_index] if 'from' in mdef else -1
                 bias_ = module_list[j][0].bias  # shape(255,)
                 bias = bias_[:modules.no * modules.na].view(modules.na, -1)  # shape(3,85)
-                #bias[:, 4] += -4.5  # obj
-                bias.data[:, 4] += math.log(8 / (640 / stride[yolo_index]) ** 2)  # obj (8 objects per 640 image)
+                incr = math.log(8 / (640 / stride[yolo_index]) ** 2) if new_coords else -4.5
+                #bias[:, 4] += -4.5 # obj
+                bias.data[:, 4] += incr  # obj (8 objects per 640 image)
                 bias.data[:, 5:] += math.log(0.6 / (modules.nc - 0.99))  # cls (sigmoid(p) = 1/nc)
                 module_list[j][0].bias = torch.nn.Parameter(bias_, requires_grad=bias_.requires_grad)
             except:
@@ -258,7 +264,7 @@ def create_modules(module_defs, img_size, cfg):
 
 
 class YOLOLayer(nn.Module):
-    def __init__(self, anchors, nc, img_size, yolo_index, layers, stride):
+    def __init__(self, anchors, nc, img_size, yolo_index, layers, stride, new_coords=True):
         super().__init__()
         self.anchors = torch.Tensor(anchors)
         self.index = yolo_index  # index of this layer in layers
@@ -271,6 +277,7 @@ class YOLOLayer(nn.Module):
         self.nx, self.ny, self.ng = 0, 0, 0  # initialize number of x, y gridpoints
         self.anchor_vec = self.anchors / self.stride
         self.anchor_wh = self.anchor_vec.view(1, self.na, 1, 1, 2)
+        self.new_coords = new_coords
 
         if ONNX_EXPORT:
             self.training = False
@@ -340,25 +347,29 @@ class YOLOLayer(nn.Module):
                 torch.sigmoid(p[:, 5:self.no]) * torch.sigmoid(p[:, 4:5])  # conf
             return p_cls, xy * ng, wh
 
-        else:  # inference
+        # inference
+        elif self.new_coords:  
+            # YOLOv5
+            io = p.sigmoid()
+            io[..., :2] = (io[..., :2] * 2. - 0.5 + self.grid)
+            io[..., 2:4] = (io[..., 2:4] * 2) ** 2 * self.anchor_wh
+            io[..., :4] *= self.stride
+            
+            return io.view(bs, -1, self.no), p  # view [1, 3, 13, 13, 85] as [1, 507, 85]
+        
+        else:
             # YOLOv3 - Ultralytics /-/ YOLOv4
             io = p.clone()  # inference output
             io[..., :2] = torch.sigmoid(io[..., :2]) + self.grid  # xy
             io[..., 2:4] = torch.exp(io[..., 2:4]) * self.anchor_wh  # wh yolo method
             io[..., :4] *= self.stride
             torch.sigmoid_(io[..., 4:])
-            
-            # YOLOv4-CSP
-            # io = p.sigmoid()
-            # io[..., :2] = (io[..., :2] * 2. - 0.5 + self.grid)
-            # io[..., 2:4] = (io[..., 2:4] * 2) ** 2 * self.anchor_wh
-            # io[..., :4] *= self.stride
-            
             return io.view(bs, -1, self.no), p  # view [1, 3, 13, 13, 85] as [1, 507, 85]
 
 
+
 class JDELayer(nn.Module):
-    def __init__(self, anchors, nc, img_size, yolo_index, layers, stride):
+    def __init__(self, anchors, nc, img_size, yolo_index, layers, stride, new_coords=True):
         super().__init__()
         self.anchors = torch.Tensor(anchors)
         self.index = yolo_index  # index of this layer in layers
@@ -371,6 +382,7 @@ class JDELayer(nn.Module):
         self.nx, self.ny, self.ng = 0, 0, 0  # initialize number of x, y gridpoints
         self.anchor_vec = self.anchors / self.stride
         self.anchor_wh = self.anchor_vec.view(1, self.na, 1, 1, 2)
+        self.new_coords = new_coords
 
         if ONNX_EXPORT:
             self.training = False
@@ -443,13 +455,14 @@ class JDELayer(nn.Module):
         else:  # inference     
             io = p.clone()  # inference output
             
-            # YOLOv3 - Ultralytics /-/ YOLOv4
-            io[..., :2] = torch.sigmoid(io[..., :2]) + self.grid  # xy
-            io[..., 2:4] = torch.exp(io[..., 2:4]) * self.anchor_wh  # wh yolo method
-            
-            # YOLOv4-CSP
-            #io[..., :2] = torch.sigmoid(io[..., :2]) * 2. - 0.5 + self.grid  # xy
-            #io[..., 2:4] = (torch.sigmoid(io[..., 2:4]) * 2) ** 2 * self.anchor_wh  # wh yolo method
+            if self.new_coords:
+                # YOLOv5
+                io[..., :2] = torch.sigmoid(io[..., :2]) * 2. - 0.5 + self.grid  # xy
+                io[..., 2:4] = (torch.sigmoid(io[..., 2:4]) * 2) ** 2 * self.anchor_wh  # wh yolo method
+            else:
+                # YOLOv3 - Ultralytics /-/ YOLOv4
+                io[..., :2] = torch.sigmoid(io[..., :2]) + self.grid  # xy
+                io[..., 2:4] = torch.exp(io[..., 2:4]) * self.anchor_wh  # wh yolo method
             
             io[..., :4] *= self.stride
             io[..., 4:] = F.softmax(io[..., 4:])
@@ -470,6 +483,14 @@ class Darknet(nn.Module):
         self.version = np.array([0, 2, 5], dtype=np.int32)  # (int32) version info: major, minor, revision
         self.seen = np.array([0], dtype=np.int64)  # (int64) number of images seen during training
         self.info(verbose) if not ONNX_EXPORT else None  # print model description
+
+        for i, mdef in enumerate(self.module_defs):
+            if mdef['type'] == 'yolo':
+                self.iou_loss = mdef['iou_loss'] if mdef['iou_loss'] else 'giou'
+                self.new_coords = True if mdef['new_coords'] else False
+                break
+
+        print(f"Using the loss function {self.iou_loss} for all yolo layers")
 
     def forward(self, x, augment=False, verbose=False):
 
